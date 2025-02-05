@@ -1,0 +1,2 @@
+Flask==3.0.2
+aspose-pdf==24.12.0
