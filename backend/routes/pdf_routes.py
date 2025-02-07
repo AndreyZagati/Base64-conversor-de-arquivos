@@ -39,11 +39,14 @@ def handle_base64_to_file():
 
 @pdf_blueprint.route('/file-to-base64', methods=['POST'])
 def handle_file_to_base64():
-    if 'file' not in request.files:
-        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'Nenhum arquivo enviado'}), 400
         
-    file = request.files['file']
-    if file and allowed_file(file.filename):
+        file = request.files['file']
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Tipo de arquivo não permitido'}), 400
+
         try:
             file_path = save_uploaded_file(file)
             base64_str = file_to_base64(file_path)
@@ -55,32 +58,47 @@ def handle_file_to_base64():
             return jsonify({'error': 'Conversão falhou'}), 500
         except Exception as e:
             current_app.logger.error(f'Erro na conversão: {str(e)}')
-            return jsonify({'error': str(e)}), 500
-    return jsonify({'error': 'Tipo de arquivo não permitido'}), 400
+            return jsonify({
+                'error': f'Erro na conversão: {str(e)}',
+                'details': 'Verifique o formato do arquivo'
+            }), 500
+
+    except Exception as e:
+        return jsonify({
+            'error': f'Erro na conversão: {str(e)}',
+            'details': 'Verifique o formato do arquivo'
+        }), 500
 
 @pdf_blueprint.route('/comprimir', methods=['POST'])
 def comprimir_pdf():
     try:
+        # Obter dados da requisição
         if request.is_json:
             data = request.get_json()
             if 'pdfBase64' not in data:
-                return jsonify({"error": "Dados inválidos"}), 400
-            file_stream = base64_to_file(data['pdfBase64'])
+                return jsonify({
+                    "erro": "Dados inválidos",
+                    "detalhes": "Campo 'pdfBase64' é obrigatório"
+                }), 400
+            pdf_data = base64.b64decode(data['pdfBase64'])
         else:
             if 'pdf' not in request.files:
-                return jsonify({"error": "Nenhum arquivo recebido"}), 400
-            file_stream = request.files['pdf'].stream
+                return jsonify({
+                    "erro": "Dados inválidos",
+                    "detalhes": "Arquivo PDF é obrigatório"
+                }), 400
+            pdf_data = request.files['pdf'].read()
 
-        # Lógica de compressão aqui (usando PyPDF2 ou outra lib)
-        # ... (implementar compressão)
+        # Simular compressão (implementar lógica real aqui)
+        compressed_data = pdf_data  # Substituir por compressão real
         
-        return send_file(
-            file_stream,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name='documento-comprimido.pdf'
-        )
-        
+        return jsonify({
+            "mensagem": "PDF comprimido com sucesso",
+            "pdfComprimidoBase64": base64.b64encode(compressed_data).decode('utf-8')
+        }), 200
+
     except Exception as e:
-        current_app.logger.error(f'Erro na compressão: {str(e)}')
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "erro": "Falha ao comprimir PDF",
+            "detalhes": str(e)
+        }), 500

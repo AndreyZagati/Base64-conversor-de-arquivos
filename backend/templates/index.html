@@ -76,7 +76,7 @@
 
           <div class="flex space-x-4 mt-4">
             <button
-              onclick="convertBase64ToFile()"
+              id="convertToFileBtn"
               class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-all"
             >
               <i class="fas fa-file-export mr-2"></i>Converter para Arquivo
@@ -110,7 +110,7 @@
               class="flex-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium file:bg-green-50 file:text-green-700 hover:file:bg-green-100 file:cursor-pointer block w-full file:transition-colors file:duration-200"
             />
             <button
-              onclick="convertFileToBase64()"
+              id="convertToBase64Btn"
               class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-all whitespace-nowrap"
             >
               <i class="fas fa-code mr-2"></i>Converter
@@ -157,12 +157,21 @@
               class="w-full h-32 p-3 border rounded-lg mb-2 resize-none focus:ring-2 focus:ring-orange-400"
               placeholder="Cole o PDF em Base64 para compressão..."
             ></textarea>
-            <button
-              onclick="compressPDF()"
-              class="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-all"
-            >
-              <i class="fas fa-file-archive mr-2"></i>Comprimir PDF
-            </button>
+            <div class="flex gap-4">
+              <button
+                id="compressBtn"
+                class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-all"
+              >
+                <i class="fas fa-compress mr-2"></i>Comprimir PDF
+              </button>
+              <button
+                id="copyCompressedBtn"
+                class="flex-1 bg-gray-300 text-gray-500 font-medium py-2 px-4 rounded-lg transition-all cursor-not-allowed"
+                disabled
+              >
+                <i class="fas fa-copy mr-2"></i>Copiar Base64 Comprimido
+              </button>
+            </div>
             <div
               id="compressResponse"
               class="mt-3 hidden p-3 bg-gray-50 rounded"
@@ -194,6 +203,26 @@
     </div>
 
     <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        // Vinculação correta usando IDs
+        const compressBtn = document.getElementById('compressBtn');
+        if (compressBtn) {
+          compressBtn.addEventListener('click', compressPDF);
+        }
+
+        const convertToBase64Btn = document.getElementById('convertToBase64Btn');
+        if (convertToBase64Btn) {
+          convertToBase64Btn.addEventListener('click', convertFileToBase64);
+        }
+
+        const convertToFileBtn = document.getElementById('convertToFileBtn');
+        if (convertToFileBtn) {
+          convertToFileBtn.addEventListener('click', convertBase64ToFile);
+        }
+
+        document.getElementById('copyCompressedBtn').addEventListener('click', copyCompressedBase64);
+      });
+
       // Funções de feedback visual
       const showLoading = (button) => {
         button.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Processando...`;
@@ -205,8 +234,22 @@
         button.disabled = false;
       };
 
-      async function convertBase64ToFile() {
-        const button = event.target;
+      const updateCopyButtonState = () => {
+        const copyBtn = document.getElementById('copyCompressedBtn');
+        const hasCompressedData = document.getElementById('base64Input').value.trim().length > 0;
+
+        copyBtn.disabled = !hasCompressedData;
+        copyBtn.classList.toggle('bg-indigo-600', hasCompressedData);
+        copyBtn.classList.toggle('text-white', hasCompressedData);
+        copyBtn.classList.toggle('bg-gray-300', !hasCompressedData);
+        copyBtn.classList.toggle('text-gray-500', !hasCompressedData);
+        copyBtn.classList.toggle('cursor-not-allowed', !hasCompressedData);
+        copyBtn.classList.toggle('cursor-pointer', hasCompressedData);
+      };
+
+      async function convertBase64ToFile(event) {
+        event.preventDefault();
+        const button = event.currentTarget.closest('button');
         const originalHTML = button.innerHTML;
         showLoading(button);
 
@@ -234,7 +277,7 @@
             return;
           }
 
-          const response = await fetch("/api/base64-to-file", {
+          const response = await fetch("/ms/base64-to-file", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -276,7 +319,7 @@
         const cleanBase64 = cleanBase64Data(base64);
         let decodedHeader;
         try {
-          decodedHeader = atob(cleanBase64.substring(0, 100));
+          decodedHeader = atob(cleanBase64.substring(0, 300));
         } catch (e) {
           return null;
         }
@@ -285,7 +328,7 @@
 
         const signatures = {
           // Documentos
-          "%PDF-": { extension: "pdf", mime: "application/pdf" },
+          "%PDF-": { extension: "pdf", mime: "application/pdf", validate: (header) => header.includes("%PDF-") && header.charCodeAt(5) > 45 },
           "\xD0\xCF\x11\xE0": { extension: "doc", mime: "application/msword" },
           "PK\x03\x04": {
             extension: fullHeader.includes("word/")
@@ -346,8 +389,9 @@
         return null;
       }
 
-      async function convertFileToBase64() {
-        const button = event.target;
+      async function convertFileToBase64(event) {
+        event.preventDefault();
+        const button = event.currentTarget.closest('button');
         const originalHTML = button.innerHTML;
         showLoading(button);
 
@@ -358,12 +402,18 @@
             return;
           }
 
-          const formData = new FormData();
-          formData.append("file", fileInput.files[0]);
+          const file = fileInput.files[0];
+          if (file.size > 60 * 1024 * 1024) {
+            alert("Arquivo muito grande! Tamanho máximo permitido: 60MB");
+            return;
+          }
 
-          const response = await fetch("/api/file-to-base64", {
-            method: "POST",
-            body: formData,
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const response = await fetch('/ms/file-to-base64', {
+            method: 'POST',
+            body: formData
           });
 
           if (response.ok) {
@@ -526,6 +576,7 @@
         const input = document.getElementById("base64Input");
         input.value = "";
         updatePreview("");
+        updateCopyButtonState();
         input.focus();
       }
 
@@ -543,30 +594,63 @@
           .catch(err => alert("Falha ao copiar: " + err));
       }
 
-      async function compressPDF() {
-        const button = event.target;
+      async function compressPDF(event) {
+        event.preventDefault();
+        const button = event.currentTarget;
         const originalHTML = button.innerHTML;
         showLoading(button);
 
         try {
-          const response = await fetch('/api/compress-pdf', {
+          const response = await fetch('/ms/comprimir', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base64: document.getElementById('base64Input').value.trim() })
+            body: JSON.stringify({ pdfBase64: document.getElementById('base64Input').value.trim() })
           });
 
-          if (!response.ok) throw new Error('Falha na compressão');
+          const responseText = await response.text();
           
-          const data = await response.json();
-          document.getElementById('base64Input').value = data.compressedBase64;
-          updatePreview(data.compressedBase64);
+          try {
+            const data = JSON.parse(responseText);
+            
+            if (!response.ok) {
+              throw new Error(data.erro || data.errors?.[0]?.message || 'Erro desconhecido');
+            }
 
+            document.getElementById('base64Input').value = data.pdfComprimidoBase64;
+            updatePreview(data.pdfComprimidoBase64);
+            updateCopyButtonState();
+
+          } catch (error) {
+            alert(`Erro na compressão:\n\n${error.message}`);
+            updateCopyButtonState('');
+          } finally {
+            resetButton(button, originalHTML);
+          }
         } catch (error) {
-          alert(`Erro: ${error.message}`);
+          alert(`Erro na compressão:\n\n${error.message}`);
+          updateCopyButtonState('');
         } finally {
-          button.innerHTML = originalHTML;
-          button.disabled = false;
+          resetButton(button, originalHTML);
         }
+      }
+
+      function copyCompressedBase64() {
+        const text = document.getElementById('base64Input').value.trim();
+        
+        if (!text) {
+          alert("Por favor, realize a compressão primeiro");
+          return;
+        }
+
+        navigator.clipboard.writeText(text)
+          .then(() => {
+            const copyBtn = document.getElementById('copyCompressedBtn');
+            copyBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+            setTimeout(() => {
+              copyBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+            }, 2000);
+          })
+          .catch(err => alert("Falha ao copiar: " + err));
       }
     </script>
   </body>
